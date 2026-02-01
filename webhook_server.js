@@ -28,7 +28,9 @@ app.get('/health', (req, res) => {
     res.send('Automation server is running.');
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Webhook server listening at http://localhost:${PORT}`);
-    console.log(`🔗 n8n Endpoint: http://localhost:${PORT}/webhook/trigger (POST)`);
+console.log('🏁 Starting Webhook Server...');
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 Webhook server listening on port ${PORT}`);
+    console.log(`🔗 n8n Endpoint: /webhook/trigger (POST)`);
 });
