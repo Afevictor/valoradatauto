@@ -35,7 +35,7 @@ async function runAutomation() {
     const { data: valuations, error } = await supabase
         .from('anonymized_valuations')
         .select('*')
-        .is('feedback', null)
+        .or('feedback.is.null,feedback.eq.NULL')
         .order('created_at', { ascending: false });
 
     if (error) {
