@@ -1,0 +1,16 @@
+{
+  "name": "dat-automation",
+  "version": "1.0.0",
+  "description": "Automated form filler for SilverDAT myClaim",
+  "main": "dat_automation.js",
+  "scripts": {
+    "start": "node dat_automation.js",
+    "server": "node webhook_server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.93.3",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "playwright": "^1.57.0"
+  }
+}
