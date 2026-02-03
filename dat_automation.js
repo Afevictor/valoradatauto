@@ -125,35 +125,61 @@ async function runAutomation() {
                 try {
                     if (await locator.count() > 0 && await locator.isVisible()) {
                         await locator.scrollIntoViewIfNeeded();
+                        await page.waitForTimeout(300);
                         await locator.click({ force: true });
+                        await page.waitForTimeout(200);
                         await locator.clear();
+                        await page.waitForTimeout(200);
 
-                        // Simulate real typing
-                        await locator.pressSequentially(value, { delay: 100 });
-                        await page.waitForTimeout(500);
-                        await locator.press('Enter');
-                        await locator.blur();
+                        // Method 1: Simulate real typing
+                        console.log(`   Typing "${value}" into ${fieldName}...`);
+                        await locator.pressSequentially(value, { delay: 150 });
+                        await page.waitForTimeout(1000); // Wait longer for any JS to process
 
-                        // Verification: check if value stuck
-                        const actualValue = await locator.inputValue();
+                        // Check if value stuck (first check)
+                        let actualValue = await locator.inputValue();
+                        console.log(`   First check: field value is "${actualValue}"`);
+
                         if (actualValue === value) {
                             console.log(`   ✅ Successfully filled ${fieldName} with "${value}"`);
+                            await page.waitForTimeout(500); // Extra wait to ensure it persists
                             return true;
                         }
 
-                        console.log(`   ⚠️ Typed value didn't stick for ${fieldName}. Retrying with DOM injection...`);
+                        console.log(`   ⚠️ Typed value didn't stick for ${fieldName}. Trying DOM injection...`);
 
-                        // Fallback: DOM injection + Event Dispatch
+                        // Method 2: DOM injection + Event Dispatch
+                        await locator.click({ force: true });
                         await locator.evaluate((el, val) => {
                             el.value = val;
                             el.dispatchEvent(new Event('input', { bubbles: true }));
                             el.dispatchEvent(new Event('change', { bubbles: true }));
-                            el.dispatchEvent(new Event('blur', { bubbles: true }));
+                            el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+                            el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
                         }, value);
 
-                        const actualValueAfterRetry = await locator.inputValue();
-                        if (actualValueAfterRetry === value) {
+                        await page.waitForTimeout(1000);
+                        actualValue = await locator.inputValue();
+                        console.log(`   Second check: field value is "${actualValue}"`);
+
+                        if (actualValue === value) {
                             console.log(`   ✅ Successfully filled ${fieldName} (DOM Injection) with "${value}"`);
+                            await page.waitForTimeout(500);
+                            return true;
+                        }
+
+                        // Method 3: Focus and type again without clearing
+                        console.log(`   ⚠️ DOM injection failed. Trying focus + type without clear...`);
+                        await locator.click({ force: true });
+                        await locator.fill(value);
+                        await page.waitForTimeout(1000);
+
+                        actualValue = await locator.inputValue();
+                        console.log(`   Third check: field value is "${actualValue}"`);
+
+                        if (actualValue === value) {
+                            console.log(`   ✅ Successfully filled ${fieldName} (Fill method) with "${value}"`);
+                            await page.waitForTimeout(500);
                             return true;
                         }
                     }
