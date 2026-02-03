@@ -120,31 +120,57 @@ async function runAutomation() {
             await vehicleTab.click({ force: true });
             await page.waitForTimeout(7000);
 
+            // Heavy-duty filler function
+            const robustFill = async (locator, value, fieldName) => {
+                try {
+                    if (await locator.count() > 0 && await locator.isVisible()) {
+                        await locator.scrollIntoViewIfNeeded();
+                        await locator.click({ force: true });
+                        await locator.clear();
+
+                        // Simulate real typing
+                        await locator.pressSequentially(value, { delay: 100 });
+                        await page.waitForTimeout(500);
+                        await locator.press('Enter');
+                        await locator.blur();
+
+                        // Verification: check if value stuck
+                        const actualValue = await locator.inputValue();
+                        if (actualValue === value) {
+                            console.log(`   ✅ Successfully filled ${fieldName} with "${value}"`);
+                            return true;
+                        }
+
+                        console.log(`   ⚠️ Typed value didn't stick for ${fieldName}. Retrying with DOM injection...`);
+
+                        // Fallback: DOM injection + Event Dispatch
+                        await locator.evaluate((el, val) => {
+                            el.value = val;
+                            el.dispatchEvent(new Event('input', { bubbles: true }));
+                            el.dispatchEvent(new Event('change', { bubbles: true }));
+                            el.dispatchEvent(new Event('blur', { bubbles: true }));
+                        }, value);
+
+                        const actualValueAfterRetry = await locator.inputValue();
+                        if (actualValueAfterRetry === value) {
+                            console.log(`   ✅ Successfully filled ${fieldName} (DOM Injection) with "${value}"`);
+                            return true;
+                        }
+                    }
+                } catch (e) { console.log(`   Internal error filling ${fieldName}:`, e.message); }
+                return false;
+            };
+
             console.log('📝 Filling vehicle details...');
+
+            // --- MILEAGE ---
             if (valuation.mileage !== undefined && valuation.mileage !== null) {
                 console.log(`   attempting to fill mileage: ${valuation.mileage}`);
                 let mileageFilled = false;
                 const mileageVal = valuation.mileage.toString();
 
-                // Helper to fill
-                const fillInput = async (locator, strategyName) => {
-                    try {
-                        if (await locator.count() > 0 && await locator.isVisible()) {
-                            await locator.scrollIntoViewIfNeeded();
-                            await locator.click({ force: true }); // Focus
-                            await locator.fill(mileageVal);
-                            await locator.blur(); // Trigger validation
-                            console.log(`   ✅ Filled mileage using ${strategyName}.`);
-                            return true;
-                        }
-                    } catch (e) { }
-                    return false;
-                };
+                if (!mileageFilled) mileageFilled = await robustFill(page.getByLabel(/Kilometraje|Mileage/i).first(), mileageVal, 'Mileage (Label)');
 
-                // Strategy 1: Label
-                if (!mileageFilled) mileageFilled = await fillInput(page.getByLabel(/Kilometraje|Mileage/i).first(), 'Label Match');
-
-                // Strategy 2: Common Selectors
                 if (!mileageFilled) {
                     const mileageSelectors = [
                         '#customField-input-vehicle_mileage',
@@ -154,49 +180,33 @@ async function runAutomation() {
                         'input[name*="odometer" i]'
                     ];
                     for (const sel of mileageSelectors) {
-                        if (await fillInput(page.locator(sel).first(), `Selector: ${sel}`)) {
+                        if (await robustFill(page.locator(sel).first(), mileageVal, `Mileage (Selector: ${sel})`)) {
                             mileageFilled = true;
                             break;
                         }
                     }
                 }
 
-                // Strategy 3: Text Proximity (Find a container having text "Kilometraje" and an Input)
                 if (!mileageFilled) {
+                    // Strategy 3: Text Proximity
                     try {
                         const container = page.locator('div, tr, p, fieldset').filter({ hasText: /Kilometraje|Mileage/i }).filter({ has: page.locator('input') }).last();
                         const input = container.locator('input').first();
-                        if (await fillInput(input, 'Text Proximity (Container Match)')) mileageFilled = true;
-                    } catch (e) { console.log('   Strategy 3 failed:', e.message); }
+                        if (await robustFill(input, mileageVal, 'Mileage (Proximity)')) mileageFilled = true;
+                    } catch (e) { }
                 }
 
                 if (!mileageFilled) console.warn('   ⚠️ Failed to fill Mileage field.');
             }
 
+            // --- REGISTRATION ---
             if (valuation.registration_number) {
                 console.log(`   attempting to fill registration: ${valuation.registration_number}`);
                 let regFilled = false;
                 const regVal = valuation.registration_number;
 
-                // Helper to fill (re-defined or similar logic)
-                const fillRegInput = async (locator, strategyName) => {
-                    try {
-                        if (await locator.count() > 0 && await locator.isVisible()) {
-                            await locator.scrollIntoViewIfNeeded();
-                            await locator.click({ force: true });
-                            await locator.fill(regVal);
-                            await locator.blur();
-                            console.log(`   ✅ Filled registration using ${strategyName}.`);
-                            return true;
-                        }
-                    } catch (e) { }
-                    return false;
-                };
+                if (!regFilled) regFilled = await robustFill(page.getByLabel(/Matrícula|Matricula|Registration|License|License Plate/i).first(), regVal, 'Registration (Label)');
 
-                // Strategy 1: Label
-                if (!regFilled) regFilled = await fillRegInput(page.getByLabel(/Matrícula|Matricula|Registration|License/i).first(), 'Label Match');
-
-                // Strategy 2: Known Selectors
                 if (!regFilled) {
                     const regSelectors = [
                         '#customField-input-vehicle_registration',
@@ -207,20 +217,20 @@ async function runAutomation() {
                         'input[name*="license" i]'
                     ];
                     for (const sel of regSelectors) {
-                        if (await fillRegInput(page.locator(sel).first(), `Selector: ${sel}`)) {
+                        if (await robustFill(page.locator(sel).first(), regVal, `Registration (Selector: ${sel})`)) {
                             regFilled = true;
                             break;
                         }
                     }
                 }
 
-                // Strategy 3: Text Proximity
                 if (!regFilled) {
+                    // Strategy 3: Text Proximity
                     try {
                         const container = page.locator('div, tr, p, fieldset').filter({ hasText: /Matrícula|Matricula|Registration|License/i }).filter({ has: page.locator('input') }).last();
                         const input = container.locator('input').first();
-                        if (await fillRegInput(input, 'Text Proximity (Container Match)')) regFilled = true;
-                    } catch (e) { console.log('   Strategy 3 (Registration) failed:', e.message); }
+                        if (await robustFill(input, regVal, 'Registration (Proximity)')) regFilled = true;
+                    } catch (e) { }
                 }
 
                 if (!regFilled) console.warn('   ⚠️ Failed to fill Registration field.');
