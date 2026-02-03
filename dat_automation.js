@@ -195,15 +195,34 @@ async function runAutomation() {
                 let mileageFilled = false;
                 const mileageVal = valuation.mileage.toString();
 
-                if (!mileageFilled) mileageFilled = await robustFill(page.getByLabel(/Kilometraje|Mileage/i).first(), mileageVal, 'Mileage (Label)');
-
+                // Strategy 1: Text Proximity (This worked for Registration!)
                 if (!mileageFilled) {
+                    try {
+                        console.log('   Trying Text Proximity for Kilometraje...');
+                        const container = page.locator('div, tr, td, p, fieldset, label').filter({ hasText: /Kilometraje|Mileage/i }).filter({ has: page.locator('input') }).last();
+                        const input = container.locator('input').first();
+                        if (await robustFill(input, mileageVal, 'Mileage (Proximity)')) mileageFilled = true;
+                    } catch (e) { console.log('   Text Proximity failed:', e.message); }
+                }
+
+                // Strategy 2: Label
+                if (!mileageFilled) {
+                    console.log('   Trying Label match...');
+                    mileageFilled = await robustFill(page.getByLabel(/Kilometraje|Mileage/i).first(), mileageVal, 'Mileage (Label)');
+                }
+
+                // Strategy 3: Common Selectors
+                if (!mileageFilled) {
+                    console.log('   Trying known selectors...');
                     const mileageSelectors = [
                         '#customField-input-vehicle_mileage',
                         '#customField-input-mileageOdometer',
                         '#customField-input-vehicle_mileage2',
                         'input[name*="mileage" i]',
-                        'input[name*="odometer" i]'
+                        'input[name*="kilometraje" i]',
+                        'input[name*="odometer" i]',
+                        'input[placeholder*="Kilometraje" i]',
+                        'input[placeholder*="Mileage" i]'
                     ];
                     for (const sel of mileageSelectors) {
                         if (await robustFill(page.locator(sel).first(), mileageVal, `Mileage (Selector: ${sel})`)) {
@@ -213,13 +232,18 @@ async function runAutomation() {
                     }
                 }
 
+                // Strategy 4: Find ANY input near "Kilometraje" text
                 if (!mileageFilled) {
-                    // Strategy 3: Text Proximity
                     try {
-                        const container = page.locator('div, tr, p, fieldset').filter({ hasText: /Kilometraje|Mileage/i }).filter({ has: page.locator('input') }).last();
-                        const input = container.locator('input').first();
-                        if (await robustFill(input, mileageVal, 'Mileage (Proximity)')) mileageFilled = true;
-                    } catch (e) { }
+                        console.log('   Trying to find any input near Kilometraje text...');
+                        const kmText = page.locator('text=/Kilometraje/i').first();
+                        if (await kmText.count() > 0) {
+                            // Get the parent row/container and find input
+                            const parent = kmText.locator('xpath=ancestor::tr | ancestor::div[@class] | ancestor::td').first();
+                            const nearbyInput = parent.locator('input[type="text"], input:not([type])').first();
+                            if (await robustFill(nearbyInput, mileageVal, 'Mileage (Nearby Input)')) mileageFilled = true;
+                        }
+                    } catch (e) { console.log('   Nearby input search failed:', e.message); }
                 }
 
                 if (!mileageFilled) console.warn('   ⚠️ Failed to fill Mileage field.');
