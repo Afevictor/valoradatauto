@@ -122,33 +122,80 @@ async function runAutomation() {
 
             console.log('📝 Filling vehicle details...');
             if (valuation.mileage !== undefined && valuation.mileage !== null) {
-                const mileageSelectors = ['#customField-input-vehicle_mileage', '#customField-input-mileageOdometer', '#customField-input-vehicle_mileage2'];
-                for (const sel of mileageSelectors) {
-                    try {
-                        const input = page.locator(sel).first();
-                        if (await input.count() > 0) {
-                            await page.evaluate(({ selector, value }) => {
-                                const el = document.querySelector(selector);
-                                if (el) { el.value = value; el.dispatchEvent(new Event('change', { bubbles: true })); }
-                            }, { selector: sel, value: valuation.mileage.toString() });
-                        }
-                    } catch (e) { }
+                console.log(`   attempting to fill mileage: ${valuation.mileage}`);
+                let mileageFilled = false;
+
+                // Strategy 1: Try by Label (Spanish 'Kilometraje' or English 'Mileage')
+                try {
+                    const labelInput = page.getByLabel(/Kilometraje|Mileage/i).first();
+                    if (await labelInput.isVisible()) {
+                        await labelInput.fill(valuation.mileage.toString());
+                        console.log('   ✅ Filled mileage using label match.');
+                        mileageFilled = true;
+                    }
+                } catch (e) { console.log('   Could not fill mileage by label:', e.message); }
+
+                // Strategy 2: Try known selectors
+                if (!mileageFilled) {
+                    const mileageSelectors = [
+                        '#customField-input-vehicle_mileage',
+                        '#customField-input-mileageOdometer',
+                        '#customField-input-vehicle_mileage2',
+                        'input[name*="mileage" i]',
+                        'input[name*="odometer" i]'
+                    ];
+                    for (const sel of mileageSelectors) {
+                        try {
+                            const input = page.locator(sel).first();
+                            if (await input.count() > 0 && await input.isVisible()) {
+                                await input.fill(valuation.mileage.toString());
+                                console.log(`   ✅ Filled mileage using selector: ${sel}`);
+                                mileageFilled = true;
+                                break;
+                            }
+                        } catch (e) { }
+                    }
                 }
+                if (!mileageFilled) console.warn('   ⚠️ Failed to fill Mileage field.');
             }
 
             if (valuation.registration_number) {
-                const regSelectors = ['#customField-input-vehicle_registration', '#txtLicenceNumberEs', '#txtLicenceNumber', '#customField-input-LicenseNumber'];
-                for (const sel of regSelectors) {
-                    try {
-                        const input = page.locator(sel).first();
-                        if (await input.count() > 0) {
-                            await page.evaluate(({ selector, value }) => {
-                                const el = document.querySelector(selector);
-                                if (el) { el.value = value; el.dispatchEvent(new Event('change', { bubbles: true })); }
-                            }, { selector: sel, value: valuation.registration_number });
-                        }
-                    } catch (e) { }
+                console.log(`   attempting to fill registration: ${valuation.registration_number}`);
+                let regFilled = false;
+
+                // Strategy 1: Try by Label
+                try {
+                    const labelInput = page.getByLabel(/Matrícula|Registration|License/i).first();
+                    if (await labelInput.isVisible()) {
+                        await labelInput.fill(valuation.registration_number);
+                        console.log('   ✅ Filled registration using label match.');
+                        regFilled = true;
+                    }
+                } catch (e) { console.log('   Could not fill registration by label:', e.message); }
+
+                // Strategy 2: Try known selectors
+                if (!regFilled) {
+                    const regSelectors = [
+                        '#customField-input-vehicle_registration',
+                        '#txtLicenceNumberEs',
+                        '#txtLicenceNumber',
+                        '#customField-input-LicenseNumber',
+                        'input[name*="registration" i]',
+                        'input[name*="license" i]'
+                    ];
+                    for (const sel of regSelectors) {
+                        try {
+                            const input = page.locator(sel).first();
+                            if (await input.count() > 0 && await input.isVisible()) {
+                                await input.fill(valuation.registration_number);
+                                console.log(`   ✅ Filled registration using selector: ${sel}`);
+                                regFilled = true;
+                                break;
+                            }
+                        } catch (e) { }
+                    }
                 }
+                if (!regFilled) console.warn('   ⚠️ Failed to fill Registration field.');
             }
 
             console.log('✅ Form filling complete.');
