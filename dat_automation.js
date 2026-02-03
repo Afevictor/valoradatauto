@@ -60,7 +60,7 @@ async function runAutomation() {
 
         try {
             console.log('🔑 Logging in...');
-            await page.goto('https://www.datgroup.com/myClaim/index.jsp', { waitUntil: 'networkidle' });
+            await page.goto('https://www.datgroup.com/myClaim/index.jsp', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
             // Login
             await page.fill('#login-customerNumber', process.env.DAT_CUSTOMER_NUMBER);
@@ -120,21 +120,37 @@ async function runAutomation() {
             await vehicleTab.click({ force: true });
             await page.waitForTimeout(7000);
 
-            // Heavy-duty filler function
+            // Heavy-duty filler function with visual verification
             const robustFill = async (locator, value, fieldName) => {
                 try {
                     if (await locator.count() > 0 && await locator.isVisible()) {
                         await locator.scrollIntoViewIfNeeded();
-                        await page.waitForTimeout(300);
+                        await page.waitForTimeout(500);
+
+                        // Take screenshot before
+                        const screenshotName = `before_${fieldName.replace(/[^a-z0-9]/gi, '_')}.png`;
+                        await page.screenshot({ path: screenshotName });
+                        console.log(`   📸 Screenshot saved: ${screenshotName}`);
+
                         await locator.click({ force: true });
-                        await page.waitForTimeout(200);
+                        await page.waitForTimeout(300);
+
+                        // Clear field multiple times to ensure it's empty
                         await locator.clear();
                         await page.waitForTimeout(200);
+                        await locator.fill('');
+                        await page.waitForTimeout(200);
 
-                        // Method 1: Simulate real typing
+                        // Method 1: Simulate real typing with blur/focus
                         console.log(`   Typing "${value}" into ${fieldName}...`);
-                        await locator.pressSequentially(value, { delay: 150 });
-                        await page.waitForTimeout(1000); // Wait longer for any JS to process
+                        await locator.focus();
+                        await page.waitForTimeout(200);
+                        await locator.pressSequentially(value, { delay: 100 });
+                        await page.waitForTimeout(2000); // Wait longer for any JS to process
+
+                        // Trigger blur event (often required for validation)
+                        await locator.blur();
+                        await page.waitForTimeout(500);
 
                         // Check if value stuck (first check)
                         let actualValue = await locator.inputValue();
@@ -142,36 +158,68 @@ async function runAutomation() {
 
                         if (actualValue === value) {
                             console.log(`   ✅ Successfully filled ${fieldName} with "${value}"`);
-                            await page.waitForTimeout(500); // Extra wait to ensure it persists
-                            return true;
+                            // Take screenshot after success
+                            const afterScreenshot = `after_${fieldName.replace(/[^a-z0-9]/gi, '_')}.png`;
+                            await page.screenshot({ path: afterScreenshot });
+                            console.log(`   📸 Screenshot saved: ${afterScreenshot}`);
+                            await page.waitForTimeout(1000); // Extra wait to ensure it persists
+
+                            // Final verification
+                            const finalValue = await locator.inputValue();
+                            if (finalValue === value) {
+                                console.log(`   ✅ Final verification passed: "${finalValue}"`);
+                                return true;
+                            } else {
+                                console.log(`   ⚠️ Value changed after delay! Now: "${finalValue}"`);
+                            }
                         }
 
                         console.log(`   ⚠️ Typed value didn't stick for ${fieldName}. Trying DOM injection...`);
 
-                        // Method 2: DOM injection + Event Dispatch
+                        // Method 2: DOM injection + Comprehensive Event Dispatch
                         await locator.click({ force: true });
+                        await page.waitForTimeout(200);
                         await locator.evaluate((el, val) => {
                             el.value = val;
+                            // Trigger all possible events
                             el.dispatchEvent(new Event('input', { bubbles: true }));
                             el.dispatchEvent(new Event('change', { bubbles: true }));
+                            el.dispatchEvent(new Event('blur', { bubbles: true }));
                             el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
                             el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+                            el.dispatchEvent(new KeyboardEvent('keypress', { bubbles: true }));
                         }, value);
 
-                        await page.waitForTimeout(1000);
+                        await page.waitForTimeout(2000);
+                        await locator.blur();
+                        await page.waitForTimeout(500);
+
                         actualValue = await locator.inputValue();
                         console.log(`   Second check: field value is "${actualValue}"`);
 
                         if (actualValue === value) {
                             console.log(`   ✅ Successfully filled ${fieldName} (DOM Injection) with "${value}"`);
-                            await page.waitForTimeout(500);
-                            return true;
+                            const afterScreenshot = `after_${fieldName.replace(/[^a-z0-9]/gi, '_')}.png`;
+                            await page.screenshot({ path: afterScreenshot });
+                            await page.waitForTimeout(1000);
+
+                            // Final verification
+                            const finalValue = await locator.inputValue();
+                            if (finalValue === value) {
+                                console.log(`   ✅ Final verification passed: "${finalValue}"`);
+                                return true;
+                            } else {
+                                console.log(`   ⚠️ Value changed after delay! Now: "${finalValue}"`);
+                            }
                         }
 
-                        // Method 3: Focus and type again without clearing
-                        console.log(`   ⚠️ DOM injection failed. Trying focus + type without clear...`);
+                        // Method 3: Fill method with events
+                        console.log(`   ⚠️ DOM injection failed. Trying fill method...`);
                         await locator.click({ force: true });
+                        await page.waitForTimeout(200);
                         await locator.fill(value);
+                        await page.waitForTimeout(1000);
+                        await locator.blur();
                         await page.waitForTimeout(1000);
 
                         actualValue = await locator.inputValue();
@@ -179,8 +227,18 @@ async function runAutomation() {
 
                         if (actualValue === value) {
                             console.log(`   ✅ Successfully filled ${fieldName} (Fill method) with "${value}"`);
-                            await page.waitForTimeout(500);
-                            return true;
+                            const afterScreenshot = `after_${fieldName.replace(/[^a-z0-9]/gi, '_')}.png`;
+                            await page.screenshot({ path: afterScreenshot });
+                            await page.waitForTimeout(1000);
+
+                            // Final verification
+                            const finalValue = await locator.inputValue();
+                            if (finalValue === value) {
+                                console.log(`   ✅ Final verification passed: "${finalValue}"`);
+                                return true;
+                            } else {
+                                console.log(`   ⚠️ Value changed after delay! Now: "${finalValue}"`);
+                            }
                         }
                     }
                 } catch (e) { console.log(`   Internal error filling ${fieldName}:`, e.message); }
@@ -286,9 +344,65 @@ async function runAutomation() {
                 if (!regFilled) console.warn('   ⚠️ Failed to fill Registration field.');
             }
 
+
             console.log('✅ Form filling complete.');
-            await supabase.from('anonymized_valuations').update({ feedback: 'Success' }).eq('id', valuation.id);
-            console.log('✅ Updated Supabase: Success');
+
+            // Final verification before marking as success
+            console.log('\n🔍 Final verification of filled fields...');
+            await page.waitForTimeout(2000);
+
+            let finalSuccess = true;
+            const finalScreenshot = `final_verification_${valuation.id}.png`;
+            await page.screenshot({ path: finalScreenshot, fullPage: true });
+            console.log(`📸 Final screenshot saved: ${finalScreenshot}`);
+
+            // Verify mileage field
+            if (valuation.mileage !== undefined && valuation.mileage !== null) {
+                try {
+                    const container = page.locator('div, tr, td, p, fieldset, label').filter({ hasText: /Kilometraje|Mileage/i }).filter({ has: page.locator('input') }).last();
+                    const input = container.locator('input').first();
+                    const finalMileageValue = await input.inputValue();
+                    console.log(`   Mileage field final value: "${finalMileageValue}" (expected: "${valuation.mileage}")`);
+
+                    // Handle formatted numbers (e.g., "1.000" vs "1000")
+                    const normalizedActual = finalMileageValue.replace(/[.,\s]/g, '');
+                    const normalizedExpected = valuation.mileage.toString().replace(/[.,\s]/g, '');
+
+                    if (normalizedActual !== normalizedExpected) {
+                        console.warn(`   ⚠️ WARNING: Mileage field does not match expected value!`);
+                        console.warn(`      Normalized actual: "${normalizedActual}", expected: "${normalizedExpected}"`);
+                        finalSuccess = false;
+                    } else {
+                        console.log(`   ✅ Mileage field verified (normalized values match)`);
+                    }
+                } catch (e) {
+                    console.warn(`   ⚠️ Could not verify mileage field: ${e.message}`);
+                }
+            }
+
+            // Verify registration field
+            if (valuation.registration_number) {
+                try {
+                    const regInput = page.locator('#txtLicenceNumberEs').first();
+                    const finalRegValue = await regInput.inputValue();
+                    console.log(`   Registration field final value: "${finalRegValue}" (expected: "${valuation.registration_number}")`);
+                    if (finalRegValue !== valuation.registration_number) {
+                        console.warn(`   ⚠️ WARNING: Registration field does not match expected value!`);
+                        finalSuccess = false;
+                    }
+                } catch (e) {
+                    console.warn(`   ⚠️ Could not verify registration field: ${e.message}`);
+                }
+            }
+
+            if (finalSuccess) {
+                await supabase.from('anonymized_valuations').update({ feedback: 'Success' }).eq('id', valuation.id);
+                console.log('✅ Updated Supabase: Success');
+            } else {
+                await supabase.from('anonymized_valuations').update({ feedback: 'Failed - Fields not persisted' }).eq('id', valuation.id);
+                console.log('❌ Updated Supabase: Failed - Fields did not persist');
+            }
+
 
         } catch (err) {
             console.error(`❌ Failed for ${valuation.id}:`, err.message);
